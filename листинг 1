@@ -1,21 +1,6 @@
-class UserProfile(models.Model):
-    """Профиль пользователя с дополнительной информацией"""
-    # Связь с моделью User (один к одному)
-    user = models.OneToOneField(
-        User, 
-        on_delete=models.CASCADE,  # При удалении пользователя удалится и профиль
-        related_name='profile'      # Позволяет обращаться user.profile
-    )
-    class Meta:
-        verbose_name = 'Профиль пользователя'
-        verbose_name_plural = 'Профили пользователей'
-
-@receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    """Создает профиль пользователя при создании нового пользователя"""
-    if created:
-        UserProfile.objects.create(user=instance)
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    """Сохраняет профиль пользователя при сохранении пользователя"""
-    instance.profile.save()
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
