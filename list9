@@ -1,0 +1,60 @@
+CREATE OR REPLACE FUNCTION public.level_up_character(p_character_id integer, p_gained_xp integer)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_current_level INT;
+    v_current_xp INT;
+    v_new_xp INT;
+    v_new_level INT;
+    v_health_bonus_per_level INT := 5;   -- например, +5 HP за каждый новый уровень
+    v_old_health_max INT;
+    v_level_up_count INT := 0;
+BEGIN
+    -- Получаем текущие параметры персонажа
+    SELECT level, experience, health_max
+    INTO v_current_level, v_current_xp, v_old_health_max
+    FROM characters
+    WHERE id = p_character_id
+    FOR UPDATE;   -- блокируем строку для избежания гонки
+
+    IF NOT FOUND THEN
+        RETURN 'Ошибка: персонаж с ID ' || p_character_id || ' не найден.';
+    END IF;
+
+    -- Добавляем полученный опыт
+    v_new_xp := v_current_xp + p_gained_xp;
+    v_new_level := v_current_level;
+
+    -- Цикл повышения уровня (формула: для уровня L нужно XP = 100 * (L-1)^2)
+    -- Примерный порог: 0, 100, 400, 900, 1600...
+    WHILE v_new_xp >= 100 * (v_new_level * v_new_level) LOOP
+        v_new_level := v_new_level + 1;
+        v_level_up_count := v_level_up_count + 1;
+    END LOOP;
+
+    -- Если уровень повысился
+    IF v_new_level > v_current_level THEN
+        -- Обновляем уровень, опыт, здоровье
+        UPDATE characters
+        SET level = v_new_level,
+            experience = v_new_xp,
+            health_max = v_old_health_max + (v_new_level - v_current_level) * v_health_bonus_per_level
+        WHERE id = p_character_id;
+
+        -- Логируем событие (если есть таблица level_up_log)
+        INSERT INTO level_up_log (character_id, old_level, new_level, timestamp)
+        VALUES (p_character_id, v_current_level, v_new_level, NOW());
+
+        RETURN format('Персонаж повышен с уровня %s до %s! (получено опыта: %s, новый опыт: %s, бонус здоровья: +%s)',
+                      v_current_level, v_new_level, p_gained_xp, v_new_xp,
+                      (v_new_level - v_current_level) * v_health_bonus_per_level);
+    ELSE
+        -- Опыта недостаточно – просто обновляем опыт
+        UPDATE characters SET experience = v_new_xp WHERE id = p_character_id;
+        RETURN format('Опыта недостаточно для повышения уровня. Текущий уровень: %s, опыт: %s/%s',
+                      v_current_level, v_new_xp, 100 * (v_current_level * v_current_level));
+    END IF;
+END;
+$function$
+;
